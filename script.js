@@ -316,7 +316,7 @@ function formatRepoContents(contents) {
         const entries = Object.entries(node);
         entries.forEach(([name, subNode], index) => {
             const isLastItem = index === entries.length - 1;
-            const linePrefix = isLastItem ? '└── ' : '├── ';
+            const linePrefix = isLastItem ? '�── ' : '├── ';
             const childPrefix = isLastItem ? '    ' : '│   ';
 
             if (name === '') {
@@ -381,3 +381,124 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+document.getElementById('processLocalRepoButton').addEventListener('click', function () {
+    const localRepoInput = document.getElementById('localRepo');
+    const files = Array.from(localRepoInput.files);
+    if (files.length === 0) {
+        alert('No files selected');
+        return;
+    }
+
+    const directoryStructure = buildLocalDirectoryStructure(files);
+    displayDirectoryStructure(directoryStructure);
+    document.getElementById('generateTextButton').style.display = 'flex';
+});
+
+function buildLocalDirectoryStructure(files) {
+    const directoryStructure = {};
+
+    files.forEach(file => {
+        const pathParts = file.webkitRelativePath.split('/');
+        let currentLevel = directoryStructure;
+
+        pathParts.forEach((part, index) => {
+            if (part === '') {
+                part = './';
+            }
+            if (!currentLevel[part]) {
+                currentLevel[part] = index === pathParts.length - 1 ? file : {};
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
+
+    return directoryStructure;
+}
+
+function getSelectedFiles() {
+    const checkboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:checked:not(.directory-checkbox)');
+    return Array.from(checkboxes).map(checkbox => {
+        const value = JSON.parse(checkbox.value);
+        if (value.url) {
+            return value;
+        } else {
+            return { path: value.path, file: value.file };
+        }
+    });
+}
+
+async function fetchFileContents(files, token) {
+    const contents = await Promise.all(files.map(async file => {
+        if (file.url) {
+            const headers = {
+                'Accept': 'application/vnd.github.v3.raw'
+            };
+            if (token) {
+                headers['Authorization'] = `token ${token}`;
+            }
+            const response = await fetch(file.url, { headers });
+            if (!response.ok) {
+                if (response.status === 403 && response.headers.get('X-RateLimit-Remaining') === '0') {
+                    throw new Error(`GitHub API rate limit exceeded while fetching ${file.path}. Please try again later or provide a valid access token to increase your rate limit.`);
+                }
+                throw new Error(`Failed to fetch content for ${file.path}. Status: ${response.status}. Please check your permissions and try again.`);
+            }
+            const text = await response.text();
+            return { url: file.url, path: file.path, text };
+        } else {
+            const text = await file.file.text();
+            return { path: file.path, text };
+        }
+    }));
+    return contents;
+}
+
+function formatRepoContents(contents) {
+    let text = '';
+    let index = '';
+
+    contents = sortContents(contents);
+
+    // Create a directory tree structure
+    const tree = {};
+    contents.forEach(item => {
+        const parts = item.path.split('/');
+        let currentLevel = tree;
+        parts.forEach((part, i) => {
+            if (!currentLevel[part]) {
+                currentLevel[part] = i === parts.length - 1 ? null : {};
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
+
+    // Function to recursively build the index
+    function buildIndex(node, prefix = '') {
+        let result = '';
+        const entries = Object.entries(node);
+        entries.forEach(([name, subNode], index) => {
+            const isLastItem = index === entries.length - 1;
+            const linePrefix = isLastItem ? '└── ' : '├── ';
+            const childPrefix = isLastItem ? '    ' : '│   ';
+
+            if (name === '') {
+                name = './';
+            }
+
+            result += `${prefix}${linePrefix}${name}\n`;
+            if (subNode) {
+                result += buildIndex(subNode, `${prefix}${childPrefix}`);
+            }
+        });
+        return result;
+    }
+
+    index = buildIndex(tree);
+
+    contents.forEach((item) => {
+        text += `\n\n---\nFile: ${item.path}\n---\n\n${item.text}\n`;
+    });
+
+    return `Directory Structure:\n\n${index}\n${text}`;
+}

@@ -68,6 +68,14 @@
                 <input type="text" id="accessToken" name="accessToken" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 h-10 px-2">
                 
             </div>
+            <div>
+                <label for="localRepo" class="block text-sm font-medium text-gray-600">Upload Local Repo/Folder:</label>
+                <input type="file" id="localRepo" name="localRepo" webkitdirectory directory multiple class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 h-10 px-2">
+            </div>
+            <button type="button" id="processLocalRepoButton" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline flex items-center justify-center">
+                <i data-lucide="folder-search" class="w-5 h-5 mr-2"></i>
+                Process Local Repo
+            </button>
             <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline flex items-center justify-center">
                 <i data-lucide="folder-search" class="w-5 h-5 mr-2"></i>
                 Fetch Directory Structure
