@@ -479,6 +479,189 @@ function formatRepoContents(contents) {
         const entries = Object.entries(node);
         entries.forEach(([name, subNode], index) => {
             const isLastItem = index === entries.length - 1;
+            const linePrefix = isLastItem ? '�── ' : '├── ';
+            const childPrefix = isLastItem ? '    ' : '│   ';
+
+            if (name === '') {
+                name = './';
+            }
+
+            result += `${prefix}${linePrefix}${name}\n`;
+            if (subNode) {
+                result += buildIndex(subNode, `${prefix}${childPrefix}`);
+            }
+        });
+        return result;
+    }
+
+    index = buildIndex(tree);
+
+    contents.forEach((item) => {
+        text += `\n\n---\nFile: ${item.path}\n---\n\n${item.text}\n`;
+    });
+
+    return `Directory Structure:\n\n${index}\n${text}`;
+}
+
+function sortContents(contents) {
+    contents.sort((a, b) => {
+        const aPath = a.path.split('/');
+        const bPath = b.path.split('/');
+        const minLength = Math.min(aPath.length, bPath.length);
+
+        for (let i = 0; i < minLength; i++) {
+            if (aPath[i] !== bPath[i]) {
+                if (i === aPath.length - 1 && i < bPath.length - 1) return 1; // a is a directory, b is a file or subdirectory
+                if (i === bPath.length - 1 && i < aPath.length - 1) return -1;  // b is a directory, a is a file or subdirectory
+                return aPath[i].localeCompare(bPath[i]);
+            }
+        }
+
+        return aPath.length - bPath.length;
+    });
+    return contents;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    lucide.createIcons();
+
+    // Add event listener for the showMoreInfo button
+    const showMoreInfoButton = document.getElementById('showMoreInfo');
+    const tokenInfo = document.getElementById('tokenInfo');
+
+    showMoreInfoButton.addEventListener('click', function() {
+        tokenInfo.classList.toggle('hidden');
+        
+        // Change the icon based on the visibility state
+        const icon = this.querySelector('[data-lucide]');
+        if (icon) {
+            if (tokenInfo.classList.contains('hidden')) {
+                icon.setAttribute('data-lucide', 'info');
+            } else {
+                icon.setAttribute('data-lucide', 'x');
+            }
+            lucide.createIcons();
+        }
+    });
+});
+
+document.getElementById('processLocalRepoButton').addEventListener('click', function () {
+    const localRepoInput = document.getElementById('localRepo');
+    const files = Array.from(localRepoInput.files);
+    if (files.length === 0) {
+        alert('No files selected');
+        return;
+    }
+
+    const directoryStructure = buildLocalDirectoryStructure(files);
+    displayDirectoryStructure(directoryStructure);
+    document.getElementById('generateTextButton').style.display = 'flex';
+
+    // Show progress bar
+    document.getElementById('progressContainer').style.display = 'block';
+    updateProgressBar(0);
+
+    // Process files and update progress bar
+    let processedFiles = 0;
+    files.forEach((file, index) => {
+        // Simulate file processing
+        setTimeout(() => {
+            processedFiles++;
+            const progress = (processedFiles / files.length) * 100;
+            updateProgressBar(progress);
+
+            // Hide progress bar when done
+            if (processedFiles === files.length) {
+                document.getElementById('progressContainer').style.display = 'none';
+            }
+        }, index * 100); // Simulate processing time
+    });
+});
+
+function buildLocalDirectoryStructure(files) {
+    const directoryStructure = {};
+
+    files.forEach(file => {
+        const pathParts = file.webkitRelativePath.split('/');
+        let currentLevel = directoryStructure;
+
+        pathParts.forEach((part, index) => {
+            if (part === '') {
+                part = './';
+            }
+            if (!currentLevel[part]) {
+                currentLevel[part] = index === pathParts.length - 1 ? file : {};
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
+
+    return directoryStructure;
+}
+
+function getSelectedFiles() {
+    const checkboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:checked:not(.directory-checkbox)');
+    return Array.from(checkboxes).map(checkbox => {
+        const value = JSON.parse(checkbox.value);
+        if (value.url) {
+            return value;
+        } else {
+            return { path: value.path, file: value.file };
+        }
+    });
+}
+
+async function fetchFileContents(files, token) {
+    const contents = await Promise.all(files.map(async file => {
+        if (file.url) {
+            const headers = {
+                'Accept': 'application/vnd.github.v3.raw'
+            };
+            if (token) {
+                headers['Authorization'] = `token ${token}`;
+            }
+            const response = await fetch(file.url, { headers });
+            if (!response.ok) {
+                if (response.status === 403 && response.headers.get('X-RateLimit-Remaining') === '0') {
+                    throw new Error(`GitHub API rate limit exceeded while fetching ${file.path}. Please try again later or provide a valid access token to increase your rate limit.`);
+                }
+                throw new Error(`Failed to fetch content for ${file.path}. Status: ${response.status}. Please check your permissions and try again.`);
+            }
+            const text = await response.text();
+            return { url: file.url, path: file.path, text };
+        } else {
+            const text = await file.file.text();
+            return { path: file.path, text };
+        }
+    }));
+    return contents;
+}
+
+function formatRepoContents(contents) {
+    let text = '';
+    let index = '';
+
+    contents = sortContents(contents);
+
+    // Create a directory tree structure
+    const tree = {};
+    contents.forEach(item => {
+        const parts = item.path.split('/');
+        let currentLevel = tree;
+        parts.forEach((part, i) => {
+            if (!currentLevel[part]) {
+                currentLevel[part] = i === parts.length - 1 ? null : {};
+            }
+            currentLevel = currentLevel[part];
+        });
+    });
+
+    // Function to recursively build the index
+    function buildIndex(node, prefix = '') {
+        let result = '';
+        const entries = Object.entries(node);
+        entries.forEach(([name, subNode], index) => {
+            const isLastItem = index === entries.length - 1;
             const linePrefix = isLastItem ? '└── ' : '├── ';
             const childPrefix = isLastItem ? '    ' : '│   ';
 
@@ -501,4 +684,28 @@ function formatRepoContents(contents) {
     });
 
     return `Directory Structure:\n\n${index}\n${text}`;
+}
+
+function sortContents(contents) {
+    contents.sort((a, b) => {
+        const aPath = a.path.split('/');
+        const bPath = b.path.split('/');
+        const minLength = Math.min(aPath.length, bPath.length);
+
+        for (let i = 0; i < minLength; i++) {
+            if (aPath[i] !== bPath[i]) {
+                if (i === aPath.length - 1 && i < bPath.length - 1) return 1; // a is a directory, b is a file or subdirectory
+                if (i === bPath.length - 1 && i < aPath.length - 1) return -1;  // b is a directory, a is a file or subdirectory
+                return aPath[i].localeCompare(bPath[i]);
+            }
+        }
+
+        return aPath.length - bPath.length;
+    });
+    return contents;
+}
+
+function updateProgressBar(value) {
+    const progressBar = document.getElementById('progressBar');
+    progressBar.value = value;
 }
